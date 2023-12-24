@@ -5,7 +5,7 @@ meta:
     name: docker
     version: latest
 build:
-  dockerfile: Dockerfile
+  dockerfile: GoToElizarov/Dockerfile
   skip: false
 run:
   persistenceMount: /data
