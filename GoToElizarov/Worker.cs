@@ -10,128 +10,63 @@ namespace GoToElizarov;
 public class Worker : BackgroundService
 {
     private readonly ILogger<Worker> _logger;
-    private IOptions<TelegramSettings> _options;
+    private IOptions<TelegramSettings> _tgOptions;
     private IOptions<ResendSettings> _resendSettings;
 
-    public Worker(ILogger<Worker> logger, IOptions<TelegramSettings> options, IOptions<ResendSettings> resendSettings)
+    public Worker(ILogger<Worker> logger, IOptions<TelegramSettings> tgOptions, IOptions<ResendSettings> resendSettings)
     {
         _resendSettings = resendSettings;
-        _options = options;
+        _tgOptions = tgOptions;
         _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        string Config(string what)
-        {
-            switch (what)
-            {
-                case "api_id":
-                    return _options.Value.ApiId;
-                case "api_hash":
-                    return _options.Value.ApiHash;
-                // case "phone_number":
-                //     return _options.Value.PhoneNumber;
-                // case "verification_code":
-                //     Console.Write("Code: ");
-                //     return Console.ReadLine();
-                default:
-                    return null; // let WTelegramClient decide the default config
-            }
-        }
-
-        using var client = new WTelegram.Client(Config);
-        await client.LoginUserIfNeeded();
+        using var client = new WTelegram.Client(_tgOptions.Value.ApiId, _tgOptions.Value.ApiHash, Path.Combine(_tgOptions.Value.SessionFileDirectory, _tgOptions.Value.PhoneNumber));
+        await DoLogin(_tgOptions.Value.PhoneNumber);
+        // await client.Login(_tgOptions.Value.PhoneNumber);
         var channels = await client.Messages_GetAllChats();
         var regexes = _resendSettings.Value.SearchRegexes.Select(x => new Regex(x, RegexOptions.IgnoreCase)).ToList();
-        var sourceChat = channels.chats[_resendSettings.Value.SourceChannelId];
+        // var sourceChat = channels.chats[_resendSettings.Value.SourceChannelId];
+        var sourceChat = (await client.Contacts_ResolveUsername("rymochnayazyzino")).Chat;
         var destinationChat = channels.chats[_resendSettings.Value.TargetChannelId];
 
-        var lastForwardedId = await GetAllMessages(destinationChat)
+        var barrier = DateTimeOffset.Now.AddHours(-120);
+        var destinationMessages = await GetAllMessages(destinationChat)
             .OfType<Message>()
-            .Where(x => x.fwd_from.from_id.ID == sourceChat.ID)
-            .Select(x => x.fwd_from.channel_post)
-            .DefaultIfEmpty(-1)
-            .MaxAsync();
-        
-        var firstRun = lastForwardedId == -1;
-        while (!stoppingToken.IsCancellationRequested)
+            .TakeWhile(x => new DateTimeOffset(x.Date) > barrier)
+            .ToListAsync(cancellationToken: stoppingToken);
+        await foreach (var message in GetAllMessages(sourceChat).OfType<Message>().TakeWhile(x => new DateTimeOffset(x.Date) > barrier).WithCancellation(stoppingToken))
         {
-            var interestingMessages = await GetAllMessages(sourceChat, lastForwardedId)
-                .OfType<Message>()
-                .Where(x => regexes.Any(y => y.IsMatch(x.message)))
-                .ToListAsync();
-            var q = await GetAllMessages(sourceChat, 1448).ToListAsync();
-            if (interestingMessages.Count == 0)
+            if (regexes.Any(y => y.IsMatch(message.message)))
             {
-                Console.WriteLine("В канале-источнике нет подходящих сообщений");
-            }
-            else
-            {
-                lastForwardedId = interestingMessages.Max(x => x.ID);
-                Console.WriteLine($"Ид последнего интересного сообщения: {lastForwardedId}");
-                if (firstRun)
-                {
-                    Console.WriteLine($"Первый запуск бота: ничего не пересылаем");
-                    firstRun = false;
-                }
+                if (destinationMessages.Any(x => x.fwd_from?.channel_post == message.ID))
+                    Console.WriteLine($"AlreadySent {message.date} {message.message}");
                 else
                 {
-                    foreach (var needResend in interestingMessages.Where(x => x.ID > lastForwardedId))
-                    {
-                        Console.WriteLine($"Пересылаем сообщение {needResend.ID}");
-                        await client.Messages_ForwardMessages(sourceChat, new[] { needResend.ID },
-                            new[] { WTelegram.Helpers.RandomLong() }, destinationChat);
-                    }
+                    await client.Messages_ForwardMessages(sourceChat, new[] { message.ID },
+                        new[] { WTelegram.Helpers.RandomLong() }, destinationChat);
+                    await client.Messages_SendMedia(destinationChat, new InputMediaPoll
+                        {
+                            poll = new Poll
+                            {
+                                id = Helpers.RandomLong(),
+                                question = "Ну так что, пойдешь на Елизарова?",
+                                answers = new []
+                                {
+                                    new PollAnswer{text = "Да!", option = new byte[1]{1}},
+                                    new PollAnswer{text = "Нет!", option = new byte[1]{2}},
+                                    new PollAnswer{text = "Заебал, сраный робот!", option = new byte[1]{3}},
+                                },
+                                flags = Poll.Flags.public_voters
+                            }
+                        },
+                        "", WTelegram.Helpers.RandomLong());
                 }
             }
-            await Task.Delay(60000, stoppingToken);
         }
-
-        // for (int offset_id = 0;;)
-        // {
-        //     var messages = await client.Messages_GetHistory(sourceChat, lastForwardedId);
-        //     if (messages.Messages.Length == 0) break;
-        //     foreach (var msgBase in messages.Messages)
-        //     {
-        //         if (msgBase is Message msg)
-        //         {
-        //             if (regexes.Any(y => y.IsMatch(msg.message)))
-        //             {
-        //                 Console.WriteLine($"AT {msg.date}: {msg.id}");
-        //                 // Console.WriteLine(msg.message);
-        //                 // if (!alreadyForwardedIds.Contains(msgBase.ID))
-        //                 // {
-        //                 //     await client.Messages_ForwardMessages(sourceChat, new[] { msg.ID },
-        //                 //         new[] { WTelegram.Helpers.RandomLong() }, destinationChat);
-        //                 //     return;
-        //                 // }
-        //             }
-        //         }
-        //     }
-        //
-        //     offset_id = messages.Messages[^1].ID;
-        // }
-
-
-        // foreach (var (id, value) in channels.chats)
-        // {
-        //     
-        //     Console.WriteLine($"{id}: {value.Title}");
-        //     Console.WriteLine((value as Channel)?.access_hash);
-        // }
-        // var chats = await client.Messages_GetChats(_resendSettings.Value.SourceChannelIds.ToArray());
-        // foreach (var chat in _resendSettings.Value.SourceChannelIds)
-        // {
-        //     // var channel = chat.Value as Channel;
-        //     var messages = await client.Channels_GetMessages(new InputChannel(chat, 6504325914482688110));
-        //     foreach (var message in messages.Messages)
-        //     {
-        //         Console.WriteLine(message.Date);
-        //     }
-        //         
-        //
-        async IAsyncEnumerable<MessageBase> GetAllMessages(InputPeer from, int lastInterestingId)
+        
+        async IAsyncEnumerable<MessageBase> GetAllMessages(InputPeer from)
         {
             int offsetId = 0;
             for (int i = 0;i<100;i++) //чисто защита от дурака (себя)
@@ -140,40 +75,23 @@ public class Worker : BackgroundService
                 if (messages.Messages.Length == 0) break;
                 foreach (var message in messages.Messages)
                 {
-                    if (_lastKnownId.GetValueOrDefault(from.ID) < message.ID)
-                        _lastKnownId[from.ID] = message.ID;
                     yield return message;
-                    if (message.ID <= lastInterestingId)
-                        yield break;
                 }
 
                 offsetId = messages.Messages[^1].ID;
             }
         }
+        
+        async Task DoLogin(string loginInfo)
+        {
+            while (client.User == null)
+                switch (await client.Login(loginInfo))
+                {
+                    case "verification_code": Console.Write("Code: "); loginInfo = Console.ReadLine(); break;
+                    case "password": Console.Write("Password: "); loginInfo = Console.ReadLine(); break;
+                    default: loginInfo = null; break;
+                }
+            Console.WriteLine($"We are logged-in as {client.User} (id {client.User.id})");
+        }
     }
-
-    private Dictionary<long, long> _lastKnownId = new Dictionary<long, long>();
-
-
-
-
-    // while (!stoppingToken.IsCancellationRequested)
-    // {
-    //     _logger.LogInformation("Worker running at: {time}", DateTimeOffset.Now);
-    //     await Task.Delay(1000, stoppingToken);
-    // }
-}
-
-public record TelegramSettings
-{
-    public string ApiId { get; set; }
-    public string ApiHash { get; set; }
-    public string PhoneNumber { get; set; }
-}
-
-public record ResendSettings
-{
-    public long SourceChannelId { get; set; }
-    public long TargetChannelId { get; set; }
-    public List<string> SearchRegexes { get; set; }
 }
