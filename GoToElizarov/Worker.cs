@@ -59,7 +59,7 @@ public class Worker : BackgroundService
         {
             try
             {
-                foreach (var update in updates.UpdateList)
+                foreach (var update in updates.UpdateList ?? Array.Empty<Update>() )
                 {
                     switch (update)
                     {
@@ -112,7 +112,6 @@ public class Worker : BackgroundService
                                     new PollAnswer { text = "Да!", option = new byte[1] { 1 } },
                                     new PollAnswer { text = "Да, если будет ком", option = new byte[1] { 2 } },
                                     new PollAnswer { text = "Нет!", option = new byte[1] { 3 } },
-                                    new PollAnswer { text = "Дохуя отправляешь писем", option = new byte[1] { 4 } },
                                 },
                                 flags = Poll.Flags.public_voters
                             }
