@@ -24,7 +24,7 @@ public class Worker : BackgroundService
         using var client = new Client(
             _tgOptions.Value.ApiId, 
             _tgOptions.Value.ApiHash,
-            Path.Combine(_tgOptions.Value.SessionFileDirectory, _tgOptions.Value.PhoneNumber)
+            Path.Combine(_tgOptions.Value.SessionFileDirectory, _tgOptions.Value.PhoneNumber.Replace("+", ""))
         );
 
         await DoLogin(_tgOptions.Value.PhoneNumber);
@@ -51,22 +51,32 @@ public class Worker : BackgroundService
             throw new Exception($"FATAL!! Нет чата с ид={_resendSettings.Value.TargetChannelId}");
         }
 
-        var barrier = DateTimeOffset.Now.AddDays(-30);
+        var barrier = DateTimeOffset.Now.AddDays(-2);
         
         await RefreshAlreadyForwarder();
         
         client.OnUpdate += async updates =>
         {
-            foreach (var update in updates.UpdateList)
+            try
             {
-                switch (update)
+                foreach (var update in updates.UpdateList)
                 {
-                    case UpdateNewMessage { message: Message msg } when msg.From.ID == sourceChat.ID:
-                        Console.WriteLine($"Обработаем сообщение из наблюдаемого канала {msg.Date} {msg.message}");
-                        await RefreshAlreadyForwarder();
-                        await ProcessMessage(msg);
-                        break;
+                    switch (update)
+                    {
+                        case UpdateNewMessage { message: Message msg } when msg.From.ID == sourceChat.ID:
+                            Console.WriteLine($"Обработаем сообщение из наблюдаемого канала {msg.Date} {msg.message}");
+                            await RefreshAlreadyForwarder();
+                            await ProcessMessage(msg);
+                            break;
+                    }
                 }
+
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e);
+                Console.WriteLine(JsonSerializer.Serialize(updates));
+                throw;
             }
         };
 
