@@ -29,6 +29,8 @@ public class Worker : BackgroundService
 
         await DoLogin(_tgOptions.Value.PhoneNumber);
         var channels = await client.Messages_GetAllChats();
+        foreach (var channel in channels.chats)
+            Console.WriteLine($"{channel.Key}: {channel.Value.Title}");
         var regexes = _resendSettings.Value.SearchRegexes.Select(x => new Regex(x, RegexOptions.IgnoreCase))
             .ToList();
         
@@ -99,6 +101,7 @@ public class Worker : BackgroundService
                     Console.WriteLine($"Уже пересылали сообщение {message.date} {message.message}");
                 else
                 {
+                    Console.WriteLine($"Пересылаем сообщение {message.date} {message.message}");
                     var response = await client.Messages_ForwardMessages(sourceChat, new[] { message.ID },
                         new[] { Helpers.RandomLong() }, destinationChat);
                     await client.Messages_SendMedia(destinationChat, new InputMediaPoll
@@ -137,6 +140,8 @@ public class Worker : BackgroundService
                 .Select(x => x.fwd_from!.channel_post)
                 .ToHashSetAsync(cancellationToken: stoppingToken);
         }
+        
+        
 
         async IAsyncEnumerable<MessageBase> GetAllMessages(InputPeer from)
         {
