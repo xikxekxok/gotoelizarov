@@ -73,11 +73,10 @@ public class Worker : BackgroundService
             {
                 foreach (var update in updates.UpdateList ?? Array.Empty<Update>())
                 {
-                    Console.WriteLine(update.GetType().Name);
-                    Console.WriteLine(JsonConvert.SerializeObject(update));
+                    LogUpdate(update);
                     switch (update)
                     {
-                        case UpdateNewMessage { message: Message msg } when msg.From.ID == sourceChat.ID:
+                        case UpdateNewMessage { message: Message msg } when msg.Peer.ID == sourceChat.ID:
                             Console.WriteLine($"Обработаем сообщение из наблюдаемого канала {msg.Date} {msg.message}");
                             await RefreshAlreadyForwarder();
                             await ProcessMessage(msg);
@@ -94,6 +93,16 @@ public class Worker : BackgroundService
             }
             Console.WriteLine("~~~");
         };
+
+        void LogUpdate(Update? update)
+        {
+            if (update is UpdateMessagePoll)
+                return;
+            if (update is UpdateEditChannelMessage uecm && uecm.message.Peer.ID == 1081170974)
+                return;
+            Console.WriteLine(update.GetType().Name);
+            Console.WriteLine(JsonConvert.SerializeObject(update));
+        }
 
         var initialMessages = GetAllMessages(sourceChat)
             .OfType<Message>()
