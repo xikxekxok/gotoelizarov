@@ -1,9 +1,10 @@
-using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Options;
+using Newtonsoft.Json;
 using TL;
 using WTelegram;
+using JsonSerializer = System.Text.Json.JsonSerializer;
 
 namespace GoToElizarov;
 
@@ -21,6 +22,14 @@ public class Worker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        var defaultLog = Helpers.Log;
+        Helpers.Log = (i, s) =>
+        {
+            if (i >= 3)
+            {
+                defaultLog(i, s);
+            }
+        };
         using var client = new Client(
             _tgOptions.Value.ApiId, 
             _tgOptions.Value.ApiHash,
@@ -61,8 +70,9 @@ public class Worker : BackgroundService
         {
             try
             {
-                foreach (var update in updates.UpdateList ?? Array.Empty<Update>() )
+                foreach (var update in updates.UpdateList ?? Array.Empty<Update>())
                 {
+                    Console.WriteLine(JsonConvert.SerializeObject(update));
                     switch (update)
                     {
                         case UpdateNewMessage { message: Message msg } when msg.From.ID == sourceChat.ID:
@@ -95,6 +105,7 @@ public class Worker : BackgroundService
 
         async Task ProcessMessage(Message message)
         {
+            Console.WriteLine("=================================================");
             if (regexes.Any(y => y.IsMatch(message.message)))
             {
                 if (_alreadyForwarded!.Contains(message.ID))
@@ -126,6 +137,7 @@ public class Worker : BackgroundService
             {
                 Console.WriteLine($"Сообщение не подходит под паттерны поиска: {message.date} {message.message}");
             }
+            Console.WriteLine("=================================================");
         }
 
         
