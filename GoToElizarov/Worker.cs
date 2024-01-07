@@ -68,12 +68,12 @@ public class Worker : BackgroundService
         
         client.OnUpdate += async updates =>
         {
-            Console.WriteLine("+++");
+            // Console.WriteLine("+++");
             try
             {
                 foreach (var update in updates.UpdateList ?? Array.Empty<Update>())
                 {
-                    LogUpdate(update);
+                    // LogUpdate(update);
                     switch (update)
                     {
                         case UpdateNewMessage { message: Message msg } when msg.Peer.ID == sourceChat.ID:
@@ -91,7 +91,7 @@ public class Worker : BackgroundService
                 Console.WriteLine(JsonSerializer.Serialize(updates));
                 throw;
             }
-            Console.WriteLine("~~~");
+            // Console.WriteLine("~~~");
         };
 
         void LogUpdate(Update? update)
