@@ -68,10 +68,12 @@ public class Worker : BackgroundService
         
         client.OnUpdate += async updates =>
         {
+            Console.WriteLine("+++");
             try
             {
                 foreach (var update in updates.UpdateList ?? Array.Empty<Update>())
                 {
+                    Console.WriteLine(update.GetType().Name);
                     Console.WriteLine(JsonConvert.SerializeObject(update));
                     switch (update)
                     {
@@ -90,6 +92,7 @@ public class Worker : BackgroundService
                 Console.WriteLine(JsonSerializer.Serialize(updates));
                 throw;
             }
+            Console.WriteLine("~~~");
         };
 
         var initialMessages = GetAllMessages(sourceChat)
